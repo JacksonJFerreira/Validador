@@ -60,6 +60,15 @@ Este projeto é um validador de dados entre planilhas Excel de duas pastas difer
   - `obter_competencia_sifac`: Obtém a competência do arquivo SIFAC.
   - `validar_dados`: Valida os dados entre as planilhas SIFAC e SISPAT.
   - `run`: Inicia a interface gráfica.
+  - Adicionadas novas funcionalidades ao Validador de Dados:
+  - Implementação da função `obter_competencia_sifac` para obter a competência do arquivo SIFAC.
+  - Implementação da função `formatar_competencia` para formatar a competência em um formato padrão.
+  - Implementação da função `validar_competencia` para validar se as competências dos arquivos SIFAC e SISPAT são iguais.
+  - Implementação da função `criar_lista_sispat` para criar uma lista de empregados do SISPAT que não foram encontrados no SIFAC.
+  - Implementação da função `validar_dados` para validar os dados dos arquivos SIFAC e SISPAT e gerar uma aba "Dados_Validados" com o status de cada empregado.
+  - Implementação das funções auxiliares `remover_colunas_em_branco` e `ajustar_largura_colunas` para melhorar a formatação das planilhas geradas.
+
+Essas funcionalidades melhoram a capacidade do sistema de validar e comparar dados entre os arquivos SIFAC e SISPAT, além de gerar relatórios detalhados sobre o status dos empregados.
 
 ## Contribuição
 

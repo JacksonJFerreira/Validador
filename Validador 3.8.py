@@ -22,6 +22,7 @@ class ValidadorDeDados:
         self.janela = ctk.CTk()
         self.janela.title("Validação Nominal de Empregados")
         self.janela.geometry("500x350")
+        self.janela.resizable(False, False)  # Trava o redimensionamento
 
         self.diretorio_sifac = ctk.StringVar()
         self.diretorio_sispat = ctk.StringVar()
@@ -46,16 +47,20 @@ class ValidadorDeDados:
             self.janela, text="Selecionar Pasta SISPAT", command=self.selecionar_pasta_sispat)
         botao_selecionar_sispat.pack(pady=5)
 
+        # Botões lado a lado
         botao_validar = ctk.CTkButton(self.janela, text="Validar Dados", command=self.validar_dados)
-        botao_validar.pack(pady=10)
-
-        rotulo_status = ctk.CTkLabel(
-            self.janela, textvariable=self.mensagem_status, font=("Aptos", 12))
-        rotulo_status.pack(pady=10)
+        botao_lista_sispat = ctk.CTkButton(self.janela, text="Lista SISPAT", command=self.criar_lista_sispat)
+        
+        botao_validar.place(relx=0.3, rely=0.62, anchor="center")
+        botao_lista_sispat.place(relx=0.7, rely=0.62, anchor="center")
 
         self.progresso = ttk.Progressbar(
             self.janela, orient="horizontal", length=400, mode="determinate")
-        self.progresso.pack(pady=10)
+        self.progresso.pack(pady=60)
+        
+        rotulo_status = ctk.CTkLabel(
+            self.janela, textvariable=self.mensagem_status, font=("Aptos", 12))
+        rotulo_status.pack(pady=20)
 
     def selecionar_pasta_sifac(self):
         self.diretorio_sifac.set(filedialog.askdirectory())
@@ -67,7 +72,7 @@ class ValidadorDeDados:
         try:
             wb = openpyxl.load_workbook(caminho, data_only=True)
             sheet = wb.active
-            competencia = sheet['G1'].value
+            competencia = sheet['E2'].value
             logging.info(f"Competência SISPAT ({caminho}): {competencia}")
             return competencia
         except Exception as e:
@@ -130,8 +135,74 @@ class ValidadorDeDados:
             return True
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao verificar competências: {e}")
-            return False
+    def criar_lista_sispat(self):
+        try:
+            arquivos_sifac = [f for f in os.listdir(self.diretorio_sifac.get()) if f.endswith(".xlsx")]
+            arquivo_sispat = next(f for f in os.listdir(self.diretorio_sispat.get()) if f.endswith(".xlsx"))
+        
+            caminho_sispat = os.path.join(self.diretorio_sispat.get(), arquivo_sispat)
+            wb_sispat = openpyxl.load_workbook(caminho_sispat)
+            ws_sispat = wb_sispat["Relatorio_Empregado"]
+        
+            total_arquivos = len(arquivos_sifac)
+            self.progresso["maximum"] = total_arquivos
+        
+            for i, arquivo_sifac in enumerate(arquivos_sifac):
+                caminho_sifac = os.path.join(self.diretorio_sifac.get(), arquivo_sifac)
+                wb_sifac = openpyxl.load_workbook(caminho_sifac)
+            
+                ws_sifac = wb_sifac["Relatorio_Empregado"]
+                contrato_valor = str(ws_sifac['C5'].value).strip()
+            
+                if "Contrato:" in contrato_valor:
+                    contrato_sifac = contrato_valor.split("Contrato:")[1].strip()
+                else:
+                    contrato_sifac = contrato_valor
+            
+                if not contrato_sifac:
+                    continue
+            
+                # Obter lista de nomes encontrados na aba Dados_Validados
+                nomes_encontrados = set()
+                if "Dados_Validados" in wb_sifac.sheetnames:
+                    ws_validados = wb_sifac["Dados_Validados"]
+                    ultima_coluna = ws_validados.max_column
+                
+                    for row in ws_validados.iter_rows(min_row=6):
+                        status = row[ultima_coluna - 2].value  # Coluna STATUS
+                        if status == "Encontrado":
+                            nome = row[3].value  # Coluna do nome
+                            nomes_encontrados.add(nome)
+            
+                # Criar nova aba LISTA_SISPAT
+                if "LISTA_SISPAT" in wb_sifac.sheetnames:
+                    wb_sifac.remove(wb_sifac["LISTA_SISPAT"])
+                ws_lista = wb_sifac.create_sheet("LISTA_SISPAT")
+            
+                ws_lista.append(["Contrato", "Nome"])
+                for cell in ws_lista[1]:
+                    cell.font = Font(bold=True)
+            
+                # Adicionar apenas nomes que não estão na lista de encontrados
+                for row in ws_sispat.iter_rows(min_row=5, values_only=True):
+                    if row[0] and str(row[0]).strip() == contrato_sifac:
+                        if row[1] not in nomes_encontrados:
+                            ws_lista.append([row[0], row[1]])
+            
+                self.ajustar_largura_colunas(ws_lista)
+            
+                self.progresso["value"] = i + 1
+                self.janela.update_idletasks()
+            
+                wb_sifac.save(caminho_sifac)
+        
+            self.mensagem_status.set("Lista SISPAT criada com sucesso!")
+        
+        except Exception as e:
 
+
+            self.mensagem_status.set(f"Erro ao criar lista SISPAT: {e}")
+            logging.error(f"Erro ao criar lista SISPAT: {e}")
     def validar_dados(self):
         if not self.validar_competencia():
             return
@@ -169,30 +240,24 @@ class ValidadorDeDados:
                 for row in ws_origem.iter_rows(min_row=4, values_only=True):
                     ws_destino.append(row)
 
-                # Encontrar a última coluna usada
                 ultima_coluna = ws_destino.max_column
 
-                # Adicionar colunas STATUS, DATA E HORA, NOME DO ARQUIVO VALIDADO no cabeçalho
                 ws_destino.cell(row=5, column=ultima_coluna + 1, value="STATUS")
                 ws_destino.cell(row=5, column=ultima_coluna + 2, value="DATA E HORA")
                 ws_destino.cell(row=5, column=ultima_coluna + 3, value="NOME DO ARQUIVO VALIDADO")
 
-                # Definir estilo de fonte em negrito para cabeçalhos
-                for col in range(1, ultima_coluna + 4):  # +4 por causa das novas colunas
+                for col in range(1, ultima_coluna + 4):
                     ws_destino.cell(row=5, column=col).font = Font(bold=True)
 
-                # Atualizar as referências das colunas para o preenchimento dos dados
                 coluna_status = ultima_coluna + 1
                 coluna_data_hora = ultima_coluna + 2
                 coluna_arquivo_validado = ultima_coluna + 3
 
-                # Definir o estilo de borda
                 thin_border = Border(left=Side(style='thin'),
                                      right=Side(style='thin'),
                                      top=Side(style='thin'),
                                      bottom=Side(style='thin'))
 
-                # Adicionar dados nas novas colunas e aplicar bordas
                 for idx, row in enumerate(ws_destino.iter_rows(min_row=6), start=6):
                     empregado = row[3].value
                     if empregado in empregados_sispat:
@@ -206,11 +271,9 @@ class ValidadorDeDados:
                     ws_destino.cell(row=idx, column=coluna_data_hora, value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                     ws_destino.cell(row=idx, column=coluna_arquivo_validado, value=nome_arquivo_validado)
 
-                    # Aplicar bordas nas novas células
                     for col in [coluna_status, coluna_data_hora, coluna_arquivo_validado]:
                         ws_destino.cell(row=idx, column=col).border = thin_border
 
-                # Aplicar bordas nas células do cabeçalho
                 for cell in ws_destino.iter_rows(min_row=5, max_row=5):
                     for c in cell:
                         c.border = thin_border
@@ -218,13 +281,9 @@ class ValidadorDeDados:
                 for row in ws_destino.iter_rows(min_row=1):
                     for cell in row:
                         cell.font = Font(name="Aptos Narrow", size=10)
-                        # Aplicar bordas em todas as células da linha 1
                         cell.border = thin_border
 
-                # Remover colunas em branco
                 self.remover_colunas_em_branco(ws_destino)
-
-                # Ajustar largura das colunas automaticamente
                 self.ajustar_largura_colunas(ws_destino)
 
                 wb.save(caminho_arquivo)
@@ -238,29 +297,25 @@ class ValidadorDeDados:
             logging.error(f"Erro ao processar: {e}")
 
     def remover_colunas_em_branco(self, worksheet):
-        """Remove colunas em branco da planilha."""
         colunas_a_remover = []
         for col in range(1, worksheet.max_column + 1):
-            # Verifica se a coluna está vazia
             if all(worksheet.cell(row=row, column=col).value is None for row in range(1, worksheet.max_row + 1)):
                 colunas_a_remover.append(col)
 
-        # Remove as colunas, começando da última coluna para evitar alteração dos índices
         for col in reversed(colunas_a_remover):
             worksheet.delete_cols(col)
 
     def ajustar_largura_colunas(self, worksheet):
-        """Ajusta a largura das colunas para que todo o texto seja visível."""
         for col in worksheet.columns:
             max_length = 0
-            column = col[0].column_letter  # Obter a letra da coluna
+            column = col[0].column_letter
             for cell in col:
                 try:
                     if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
                 except:
                     pass
-            adjusted_width = (max_length + 2)  # Espaço extra
+            adjusted_width = (max_length + 2)
             worksheet.column_dimensions[column].width = adjusted_width
 
     def run(self):
